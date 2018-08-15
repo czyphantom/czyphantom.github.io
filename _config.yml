@@ -1,9 +1,9 @@
 # Site settings
 title: CZY's blog
-SEOTitle: CZY's blog
+SEOTitle: 
 header-img: img/post-bg.jpg
 email: czyphantom@gmail.com
-description: "Nothing."
+description: ""
 keyword: "Java,Golang,CZY"
 url: "https://czyphantom.github.io"          # your host, for absolute URL
 baseurl: ""      # for example, '/blog' if your blog hosted on 'host/blog'
