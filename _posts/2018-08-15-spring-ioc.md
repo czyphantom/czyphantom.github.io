@@ -12,7 +12,7 @@ tags:
 
 # ClassPathXmlApplicationContext
 
-Spring的运行基础是应用上下文，即ApplicationContext，其典型实现类ClassPathXmlApplicationContext，继承链为ClassPathXmlApplicationContext -> AbstractXmlApplicationContext -> AbstractRefreshableApplicationContext -> AbstractApplicationContext。在调用以下构造器时：
+Spring的运行基础是应用上下文，即ApplicationContext，其典型实现类ClassPathXmlApplicationContext，继承链为ClassPathXmlApplicationContext -> AbstractXmlApplicationContext -> AbstractRefreshableApplicationContext -> AbstractApplicationContext。通过以下构造器加载配置文件：
 
 ```java
     public ClassPathXmlApplicationContext(String configLocation) throws BeansException {
@@ -20,7 +20,7 @@ Spring的运行基础是应用上下文，即ApplicationContext，其典型实�
 	}
 ```
 
-通过该构造器加载配置文件，该构造器又调用：
+该构造器又调用以下构造器：
 
 ```java
     public ClassPathXmlApplicationContext(String[] configLocations, boolean refresh,        ApplicationContext parent)
@@ -34,11 +34,10 @@ Spring的运行基础是应用上下文，即ApplicationContext，其典型实�
 	}
 ```
 
-在完成必要的设置后，该构造器又调用refresh方法，refresh方法是初始化的核心，代码如下：
+在完成必要的设置后，该构造器又调用refresh方法，refresh方法是初始化应用上下文的核心，代码如下：
 
 ```java
     public void refresh() throws BeansException, IllegalStateException {
-        //可能有多个应用上下文环境，所以要保证线程安全
 		synchronized (this.startupShutdownMonitor) {
 			//做一些预处理
 			prepareRefresh();
@@ -91,7 +90,7 @@ Spring的运行基础是应用上下文，即ApplicationContext，其典型实�
 	}
 ```
 
-该方法的核心在于构建BeanFactory，最终由AbstractRefreshableApplicationContext实现，代码如下：
+refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableApplicationContext实现，代码如下：
 
 ```java
 	protected final void refreshBeanFactory() throws BeansException {
@@ -118,52 +117,15 @@ Spring的运行基础是应用上下文，即ApplicationContext，其典型实�
 	}
 ```
 
-创建BeanFactory考虑到了多线程的情况，因此需要加一些判定。另外比较重要的是BeanFactory加载Bean定义,该方法的实现在AbstractXmlApplicationContext：
-
-```java
-	protected void loadBeanDefinitions(DefaultListableBeanFactory beanFactory) throws BeansException, IOException {
-		//根据BeanFactory准备解析XML中的Bean定义了
-		XmlBeanDefinitionReader beanDefinitionReader = new XmlBeanDefinitionReader(beanFactory);
-
-		//进行一些必要的设置
-		beanDefinitionReader.setEnvironment(this.getEnvironment());
-		beanDefinitionReader.setResourceLoader(this);
-		beanDefinitionReader.setEntityResolver(new ResourceEntityResolver(this));
-
-		initBeanDefinitionReader(beanDefinitionReader);
-        //该方法加载Bean定义
-		loadBeanDefinitions(beanDefinitionReader);
-	}
-
-	protected void loadBeanDefinitions(XmlBeanDefinitionReader reader) throws BeansException, IOException {
-		Resource[] configResources = getConfigResources();
-		if (configResources != null) {
-			reader.loadBeanDefinitions(configResources);
-		}
-		String[] configLocations = getConfigLocations();
-		if (configLocations != null) {
-			reader.loadBeanDefinitions(configLocations);
-		}
-	}
-
-    public int loadBeanDefinitions(Resource... resources) throws BeanDefinitionStoreException {
-		Assert.notNull(resources, "Resource array must not be null");
-		int counter = 0;
-		for (Resource resource : resources) {
-			counter += loadBeanDefinitions(resource);
-		}
-		return counter;
-	}   
-```
-
-loadBeanDefinitions的核心代码是XmlBeanDefinitionReader中的doLoadBeanDefinitions，如下：
+比较重要的是BeanFactory加载Bean定义的方法,最终调用XmlBeanDefinitionReader中的doLoadBeanDefinitions方法,如下：
 
 ```java
     protected int doLoadBeanDefinitions(InputSource inputSource, Resource resource)
 			throws BeanDefinitionStoreException {
 		try {
-            //根据配置文件加载Document
+            //根据配置文件加载Document，由此可见Spring使用的是DOM方式解析XML文件
 			Document doc = doLoadDocument(inputSource, resource);
+            //注册Bean定义
 			return registerBeanDefinitions(doc, resource);
 		}
 		catch (BeanDefinitionStoreException ex) {
@@ -173,23 +135,42 @@ loadBeanDefinitions的核心代码是XmlBeanDefinitionReader中的doLoadBeanDefi
 	}
 ```
 
-该方法首先加载文件的Document，接着注册。注册Bean定义的相关代码如下：
+该方法首先加载配置文件的Document，接着注册Bean定义。注册Bean定义最终调用DefaultBeanDefinitionDocumentReader的registerBeanDefinitions方法获得Document的根元素，然后调用doRegisterBeanDefinitions方法注册根元素，代码如下：
 
 ```java
-    public int registerBeanDefinitions(Document doc, Resource resource) throws BeanDefinitionStoreException {
-		BeanDefinitionDocumentReader documentReader = createBeanDefinitionDocumentReader();
-		documentReader.setEnvironment(getEnvironment());
-		int countBefore = getRegistry().getBeanDefinitionCount();
-        //该方法调用DefaultBeanDefinitionDocumentReader的registerBeanDefinitions方法获得Document根元素后，再调用doRegisterBeanDefinitions方法解析XML文档
-		documentReader.registerBeanDefinitions(doc, createReaderContext(resource));
-		return getRegistry().getBeanDefinitionCount() - countBefore;
+	public void registerBeanDefinitions(Document doc, XmlReaderContext readerContext) {
+		this.readerContext = readerContext;
+		logger.debug("Loading bean definitions");
+		Element root = doc.getDocumentElement();
+		doRegisterBeanDefinitions(root);
 	}
+
+	protected void doRegisterBeanDefinitions(Element root) {
+		BeanDefinitionParserDelegate parent = this.delegate;
+		this.delegate = createDelegate(getReaderContext(), root, parent);
+
+		if (this.delegate.isDefaultNamespace(root)) {
+			String profileSpec = root.getAttribute(PROFILE_ATTRIBUTE);
+			if (StringUtils.hasText(profileSpec)) {
+				String[] specifiedProfiles = StringUtils.tokenizeToStringArray(
+						profileSpec, BeanDefinitionParserDelegate.MULTI_VALUE_ATTRIBUTE_DELIMITERS);
+				if (!getReaderContext().getEnvironment().acceptsProfiles(specifiedProfiles)) {
+					return;
+				}
+			}
+		}
+
+		preProcessXml(root);
+		parseBeanDefinitions(root, this.delegate);
+		postProcessXml(root);
+
+		this.delegate = parent;
+	}    
 ```
 
 获得Document的根元素后，使用parseBeanDefinitions来解析：
 
 ```java
-
 	protected void parseBeanDefinitions(Element root, BeanDefinitionParserDelegate delegate) {
 		if (delegate.isDefaultNamespace(root)) {
 			NodeList nl = root.getChildNodes();
@@ -212,39 +193,40 @@ loadBeanDefinitions的核心代码是XmlBeanDefinitionReader中的doLoadBeanDefi
 	}    
 ```
 
-解析的核心在于parseDefaultElement方法，该方法使用processBeanDefinition方法处理bean标签，代码如下：
+核心在于parseDefaultElement方法解析普通节点，该方法使用processBeanDefinition方法处理普通bean标签，代码如下：
 
 ```java
     protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate) {
-        BeanDefinitionHolder bdHolder = delegate.parseBeanDefinitionElement(ele);// 解析
+        //解析节点
+        BeanDefinitionHolder bdHolder = delegate.parseBeanDefinitionElement(ele);
         if (bdHolder != null) {
             bdHolder = delegate.decorateBeanDefinitionIfRequired(ele, bdHolder);
             try {
-                // Register the final decorated instance.
+            
                 BeanDefinitionReaderUtils.registerBeanDefinition(bdHolder, getReaderContext().getRegistry());
             }
             catch (BeanDefinitionStoreException ex) {
                 getReaderContext().error("Failed to register bean definition with name '" +
                         bdHolder.getBeanName() + "'", ele, ex);
             }
-            // Send registration event.
+
             getReaderContext().fireComponentRegistered(new BeanComponentDefinition(bdHolder));
         }
     }
 ```
 
-首先创建一个BeanDefinitionHolder，该方法会调用BeanDefinitionReaderUtils.registerBeanDefinition方法,最后执行容器通知事件。该静态方法实现如下：
+该方法会调用BeanDefinitionReaderUtils.registerBeanDefinition方法来注册Bean定义，实现如下：
 
 ```java
     public static void registerBeanDefinition(
             BeanDefinitionHolder definitionHolder, BeanDefinitionRegistry registry)
             throws BeanDefinitionStoreException {
 
-        // Register bean definition under primary name.
+        //获得bean的名称
         String beanName = definitionHolder.getBeanName();
-        registry.registerBeanDefinition(beanName, definitionHolder.getBeanDefinition());// 注册
+        //这一步注册bean定义
+        registry.registerBeanDefinition(beanName, definitionHolder.getBeanDefinition());
 
-        // Register aliases for bean name, if any.
         String[] aliases = definitionHolder.getAliases();
         if (aliases != null) {
             for (String alias : aliases) {
@@ -254,7 +236,7 @@ loadBeanDefinitions的核心代码是XmlBeanDefinitionReader中的doLoadBeanDefi
     }
 ```
 
-可以看到首先从bean的持有者那里获取了beanName，然后调用registry.registerBeanDefinition(beanName, definitionHolder.getBeanDefinition())， 将bean的名字和BeanDefinition注册，最后：
+最后通过registerBeanDefinition正式注册：
 
 ```java
     public void registerBeanDefinition(String beanName, BeanDefinition beanDefinition)
@@ -283,7 +265,7 @@ loadBeanDefinitions的核心代码是XmlBeanDefinitionReader中的doLoadBeanDefi
                         "': There is already [" + oldBeanDefinition + "] bound.");
             }
             else if (oldBeanDefinition.getRole() < beanDefinition.getRole()) {
-                // e.g. was ROLE_APPLICATION, now overriding with ROLE_SUPPORT or ROLE_INFRASTRUCTURE
+                
                 if (this.logger.isWarnEnabled()) {
                     this.logger.warn("Overriding user-defined bean definition for bean '" + beanName +
                             "' with a framework-generated bean definition: replacing [" +
@@ -308,7 +290,7 @@ loadBeanDefinitions的核心代码是XmlBeanDefinitionReader中的doLoadBeanDefi
         }
         else {
             if (hasBeanCreationStarted()) {
-                // Cannot modify startup-time collection elements anymore (for stable iteration)
+               
                 synchronized (this.beanDefinitionMap) {
                     this.beanDefinitionMap.put(beanName, beanDefinition);
                     List<String> updatedDefinitions = new ArrayList<>(this.beanDefinitionNames.size() + 1);
@@ -323,8 +305,8 @@ loadBeanDefinitions的核心代码是XmlBeanDefinitionReader中的doLoadBeanDefi
                 }
             }
             else {
-                // Still in startup registration phase // 最终放进这个map 实现注册
-                this.beanDefinitionMap.put(beanName, beanDefinition);// 走这里 // private final Map<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>(256);
+                // 最终放进这个map 实现注册
+                this.beanDefinitionMap.put(beanName, beanDefinition);
                 this.beanDefinitionNames.add(beanName);
                 this.manualSingletonNames.remove(beanName);
             }
@@ -339,7 +321,7 @@ loadBeanDefinitions的核心代码是XmlBeanDefinitionReader中的doLoadBeanDefi
 
 将beanName和beanDefinition放进一个ConcurrentHashMap中。
 
-那么这个 beanDefinition 是时候创建的呢？ 就是在 DefaultBeanDefinitionDocumentReader.processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate) 方法中，在这里创建了 BeanDefinitionHolder， 而该实例中解析Bean并将Bean 保存在该对象中。所以称为持有者。该实例会调用 parseBeanDefinitionElement(Element ele, @Nullable BeanDefinition containingBean) 方法，该方法用于解析XML文件并创建一个 BeanDefinitionHolder 返回，该方法会调用 parseBeanDefinitionElement(ele, beanName, containingBean) 方法， 我们看看该方法：
+bean的定义是在DefaultBeanDefinitionDocumentReader.processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate)方法中创建的，在这里创建了BeanDefinitionHolder，而该实例中解析Bean并将Bean保存在该对象中，所以称为持有者。该实例会调用parseBeanDefinitionElement(Element ele, @Nullable BeanDefinition containingBean)方法，该方法用于解析XML文件并创建一个BeanDefinitionHolder返回，该方法会调用 parseBeanDefinitionElement(ele, beanName, containingBean)方法，方法如下：
 
 ```java
     public AbstractBeanDefinition parseBeanDefinitionElement(
@@ -349,7 +331,7 @@ loadBeanDefinitions的核心代码是XmlBeanDefinitionReader中的doLoadBeanDefi
 
         String className = null;
         if (ele.hasAttribute(CLASS_ATTRIBUTE)) {
-            className = ele.getAttribute(CLASS_ATTRIBUTE).trim();// 类全限定名称
+            className = ele.getAttribute(CLASS_ATTRIBUTE).trim();
         }
         String parent = null;
         if (ele.hasAttribute(PARENT_ATTRIBUTE)) {
@@ -357,7 +339,7 @@ loadBeanDefinitions的核心代码是XmlBeanDefinitionReader中的doLoadBeanDefi
         }
 
         try {
-            AbstractBeanDefinition bd = createBeanDefinition(className, parent);// 创建
+            AbstractBeanDefinition bd = createBeanDefinition(className, parent);
 
             parseBeanDefinitionAttributes(ele, beanName, containingBean, bd);
             bd.setDescription(DomUtils.getChildElementValueByTagName(ele, DESCRIPTION_ELEMENT));
@@ -398,11 +380,11 @@ loadBeanDefinitions的核心代码是XmlBeanDefinitionReader中的doLoadBeanDefi
     public static AbstractBeanDefinition createBeanDefinition(
             @Nullable String parentName, @Nullable String className, @Nullable ClassLoader classLoader) throws ClassNotFoundException {
 
-        GenericBeanDefinition bd = new GenericBeanDefinition();// 泛型的bean定义，也就是最终生成的bean定义。
+        GenericBeanDefinition bd = new GenericBeanDefinition();
         bd.setParentName(parentName);
         if (className != null) {
             if (classLoader != null) {
-                bd.setBeanClass(ClassUtils.forName(className, classLoader));// 设置Class 对象
+                bd.setBeanClass(ClassUtils.forName(className, classLoader));
             }
             else {
                 bd.setBeanClassName(className);
