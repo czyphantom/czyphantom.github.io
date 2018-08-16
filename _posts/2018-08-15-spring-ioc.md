@@ -1,7 +1,7 @@
 ---
 layout:     post
 title:      Spring源码阅读（一）
-subtitle:   ApplicationContext
+subtitle:   IoC
 date:       2018-08-15
 author:     CZY
 header-img: img/bg.png
@@ -9,8 +9,6 @@ catalog: true
 tags:
     - Spring
 ---
-
-# ClassPathXmlApplicationContext
 
 Spring的运行基础是应用上下文，即ApplicationContext，其典型实现类ClassPathXmlApplicationContext，继承链为ClassPathXmlApplicationContext -> AbstractXmlApplicationContext -> AbstractRefreshableApplicationContext -> AbstractApplicationContext。通过以下构造器加载配置文件：
 
@@ -90,7 +88,7 @@ Spring的运行基础是应用上下文，即ApplicationContext，其典型实�
 	}
 ```
 
-## 构建BeanFactory
+# 构建BeanFactory
 
 refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableApplicationContext实现，代码如下：
 
@@ -292,6 +290,8 @@ refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableAppl
 
 注册的最终目标就是将beanName和beanDefinition放进BeanFactory的ConcurrentHashMap中。
 
+# 注册BeanDefinition
+
 之前说过BeanDefinitionHolder，实际上在解析DOM节点时，就是通过BeanDefinitionHolder来生成bean定义并放入到该类中的。具体来说，是在BeanDefinitionParserDelgate类中的parseBeanDefinitionElement方法。该方法用于解析XML文件并创建一个BeanDefinitionHolder返回，如下所示：
 
 ```java
@@ -364,7 +364,7 @@ refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableAppl
 
 该方法很简单，创建一个bean定义，设置一下parent名称，bean的class或者class的名称即可，这样以来就得到一个完整的bean定义。算上之前的部分，一个beanFactory就被构建出来了，但是还需要将bean实例化。
 
-## 实例化bean以及完成IoC
+# 实例化bean以及完成IoC
 
 构建完BeanFactory之后，还需要实例化bean（主要是作用域位Singleton的bean)，回顾refresh方法可以发现是finishBeanFactoryInitialization方法所完成的。在完成必要的设置之后，调用preInstantiateSingletons方法来实例化：
 
@@ -537,7 +537,7 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
 
 如果是无参构造器构造，最后会通过反射构造出实例来，具体就不详细去看了。实例构造好了，还需要按意愿初始化。代码比较长也就不细看了，简言之就是读取配置的property属性来设置值，如果有依赖的bean的话就会递归调用getBean方法。
 
-## 总结
+# 总结
 
 在创建应用上下文的过程中，核心的思路就在于：
 1. 加载配置文件并创建bean定义。
