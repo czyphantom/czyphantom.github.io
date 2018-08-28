@@ -10,7 +10,7 @@ tags:
     - Spring
 ---
 
-Spring的运行基础是应用上下文，即ApplicationContext，其典型实现类ClassPathXmlApplicationContext，继承链为ClassPathXmlApplicationContext -> AbstractXmlApplicationContext -> AbstractRefreshableApplicationContext -> AbstractApplicationContext。通过以下构造器加载配置文件：
+Spring的运行基础是应用上下文，即ApplicationContext，其典型实现类ClassPathXmlApplicationContext，继承链为ClassPathXmlApplicationContext -> AbstractXmlApplicationContext -> AbstractRefreshableApplicationContext -> AbstractApplicationContext -> DefaultResourceLoader -> ResourceLoader。ClassPathXmlApplicationContext通过以下构造器加载配置文件：
 
 ```java
     public ClassPathXmlApplicationContext(String configLocation) throws BeansException {
@@ -32,15 +32,15 @@ Spring的运行基础是应用上下文，即ApplicationContext，其典型实�
 	}
 ```
 
-在完成必要的设置后，该构造器又调用refresh方法，refresh方法是初始化应用上下文的核心，代码如下：
+在设置完配置路径后，该构造器又调用refresh方法，refresh方法是初始化应用上下文的核心，实现在AbstractApplicationContext里，代码如下：
 
 ```java
     public void refresh() throws BeansException, IllegalStateException {
 		synchronized (this.startupShutdownMonitor) {
-			//做一些预处理
+			//预处理
 			prepareRefresh();
 
-			//获得BeanFactory
+			//获得BeanFactory，重点
 			ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
 
 			//对BeanFactory先做一些预处理
@@ -90,7 +90,7 @@ Spring的运行基础是应用上下文，即ApplicationContext，其典型实�
 
 # 构建BeanFactory
 
-refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableApplicationContext实现，代码如下：
+refresh方法的核心在于构建BeanFactory，构建方法由AbstractRefreshableApplicationContext实现，代码如下：
 
 ```java
 	protected final void refreshBeanFactory() throws BeansException {
@@ -105,7 +105,7 @@ refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableAppl
 			beanFactory.setSerializationId(getId());
             //定制化BeanFactory
 			customizeBeanFactory(beanFactory);
-            //使用beanFactory加载bean定义
+            //使用beanFactory加载bean定义，重点
 			loadBeanDefinitions(beanFactory);
 			synchronized (this.beanFactoryMonitor) {
 				this.beanFactory = beanFactory;
@@ -117,7 +117,7 @@ refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableAppl
 	}
 ```
 
-该方法比较重要的是BeanFactory加载bean定义的方法loadBeanDefinitions,此方法最终调用XmlBeanDefinitionReader中的doLoadBeanDefinitions方法,如下：
+构建是BeanFactory的核心是加载bean定义的方法loadBeanDefinitions,此方法最终调用XmlBeanDefinitionReader中的doLoadBeanDefinitions方法,如下：
 
 ```java
     protected int doLoadBeanDefinitions(InputSource inputSource, Resource resource)
@@ -125,7 +125,7 @@ refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableAppl
 		try {
             //根据配置文件加载Document，由此可见Spring使用的是DOM方式解析XML文件
 			Document doc = doLoadDocument(inputSource, resource);
-            //注册Bean定义
+            //注册Bean定义，重点
 			return registerBeanDefinitions(doc, resource);
 		}
 		catch (BeanDefinitionStoreException ex) {
@@ -141,8 +141,9 @@ refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableAppl
 	protected void doRegisterBeanDefinitions(Element root) {
 		BeanDefinitionParserDelegate parent = this.delegate;
 		this.delegate = createDelegate(getReaderContext(), root, parent);
-
+		//默认的命名空间
 		if (this.delegate.isDefaultNamespace(root)) {
+			//检查profile属性
 			String profileSpec = root.getAttribute(PROFILE_ATTRIBUTE);
 			if (StringUtils.hasText(profileSpec)) {
 				String[] specifiedProfiles = StringUtils.tokenizeToStringArray(
@@ -153,8 +154,10 @@ refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableAppl
 			}
 		}
 
+		//空实现，目的在于给子类一个把自定义的标签转为Spring标准标签的机会
 		preProcessXml(root);
 		parseBeanDefinitions(root, this.delegate);
+		//重点，解析根元素
 		postProcessXml(root);
 
 		this.delegate = parent;
@@ -175,6 +178,7 @@ refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableAppl
 						parseDefaultElement(ele, delegate);
 					}
 					else {
+						//非默认命名空间的元素交由delegate处理
 						delegate.parseCustomElement(ele);
 					}
 				}
@@ -189,13 +193,29 @@ refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableAppl
 此方法获得根节点的每一个子节点后，调用parseDefaultElement方法解析普通节点，接着使用processBeanDefinition方法处理普通bean标签：
 
 ```java
+
+	private void parseDefaultElement(Element ele, BeanDefinitionParserDelegate delegate) {
+		if (delegate.nodeNameEquals(ele, IMPORT_ELEMENT)) {
+			importBeanDefinitionResource(ele);
+		}
+		else if (delegate.nodeNameEquals(ele, ALIAS_ELEMENT)) {
+			processAliasRegistration(ele);
+		}
+		else if (delegate.nodeNameEquals(ele, BEAN_ELEMENT)) {
+			processBeanDefinition(ele, delegate);
+		}
+		else if (delegate.nodeNameEquals(ele, NESTED_BEANS_ELEMENT)) {
+			//递归
+			doRegisterBeanDefinitions(ele);
+		}
+	}
+
     protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate) {
         //解析节点
         BeanDefinitionHolder bdHolder = delegate.parseBeanDefinitionElement(ele);
         if (bdHolder != null) {
             bdHolder = delegate.decorateBeanDefinitionIfRequired(ele, bdHolder);
             try {
-            
                 BeanDefinitionReaderUtils.registerBeanDefinition(bdHolder, getReaderContext().getRegistry());
             }
             catch (BeanDefinitionStoreException ex) {
@@ -235,9 +255,6 @@ refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableAppl
     public void registerBeanDefinition(String beanName, BeanDefinition beanDefinition)
             throws BeanDefinitionStoreException {
 
-        Assert.hasText(beanName, "Bean name must not be empty");
-        Assert.notNull(beanDefinition, "BeanDefinition must not be null");
-
         if (beanDefinition instanceof AbstractBeanDefinition) {
             try {
                 ((AbstractBeanDefinition) beanDefinition).validate();
@@ -247,9 +264,7 @@ refresh方法的核心在于构建BeanFactory，主要由AbstractRefreshableAppl
                         "Validation of bean definition failed", ex);
             }
         }
-
         BeanDefinition oldBeanDefinition;
-
         //beanDefinitionMap是一个键是beanName，值是beanDefinition的ConcurrentHashMap，大小为256
         oldBeanDefinition = this.beanDefinitionMap.get(beanName);
         if (oldBeanDefinition != null) {
@@ -512,7 +527,7 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
 	}
 ```
 
-**对于一个bean，它直接依赖的bean是可以直接得到的，但是在处理这些依赖时，每次需要注册之后才会在dependentBeanMap里出现，如果没有循环依赖，每个bean都只会在dependentBeanMap里出现，如果在处理依赖的bean时发现已经存在了，说明出现了循环依赖。**isDependent的主要思路就是在现有的已注册的bean中递归判断是否出现上述的情况。
+**对于一个bean，它直接依赖的bean是可以直接得到的，但是在处理这些依赖时，每次需要注册之后才会在dependentBeanMap里出现，如果没有循环依赖，每个bean都只会在dependentBeanMap里出现一次，如果在处理依赖的bean时发现已经存在了，说明出现了循环依赖。**isDependent的主要思路就是在现有的已注册的bean中递归判断是否出现上述的情况。
 
 再看实例化bean的方法createBean,该方法最终调用AbstractAutowireCapableBeanFactory的doCreateBean方法，我们看看关键部分代码：
 
