@@ -807,7 +807,7 @@ protected void populateBean(String beanName, RootBeanDefinition mbd, BeanWrapper
       for (BeanPostProcessor bp : getBeanPostProcessors()) {
          if (bp instanceof InstantiationAwareBeanPostProcessor) {
             InstantiationAwareBeanPostProcessor ibp = (InstantiationAwareBeanPostProcessor) bp;
-            // 如果返回 false，代表不需要进行后续的属性设值，也不需要再经过其他的 BeanPostProcessor 的处理
+            // 如果返回 false，代表不需要进行后续的属性设值，也不需要再经过其他的BeanPostProcessor的处理
             if (!ibp.postProcessAfterInstantiation(bw.getWrappedInstance(), beanName)) {
                continueWithPropertyPopulation = false;
                break;
