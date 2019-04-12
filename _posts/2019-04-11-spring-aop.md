@@ -10,7 +10,7 @@ tags:
     - Spring
 ---
 
-Spring AOP的通常都是由BeanPostProcessor的实现类对bean进行自定义增强，基于AspectJ注解的BeanPostProcessor实现类是AnnotationAwareAspectJAutoProxyCreator，该类可以根据注解自动创建代理，可以查看该类的父类覆写的自定义增强方法：
+Spring AOP的注解实现是由BeanPostProcessor的实现类对bean进行自定义增强（XML方式是通过扩展FactoryBean，使用的是ProxyFactoryBean），基于AspectJ注解的BeanPostProcessor实现类是AnnotationAwareAspectJAutoProxyCreator，该类可以根据注解自动创建代理，可以查看该类的父类覆写的自定义增强方法：
 
 ```java
 	@Override
@@ -22,6 +22,7 @@ Spring AOP的通常都是由BeanPostProcessor的实现类对bean进行自定义�
 	public Object postProcessAfterInitialization(@Nullable Object bean, String beanName) throws BeansException {
 		if (bean != null) {
 			Object cacheKey = getCacheKey(bean.getClass(), beanName);
+			//如果还没有代理类的引用则可能需要创建代理类
 			if (!this.earlyProxyReferences.contains(cacheKey)) {
 				return wrapIfNecessary(bean, beanName, cacheKey);
 			}
@@ -41,7 +42,7 @@ Spring AOP的通常都是由BeanPostProcessor的实现类对bean进行自定义�
 			return bean;
 		}
 
-		// Create proxy if we have advice.
+		//获得advice创建代理类
 		Object[] specificInterceptors = getAdvicesAndAdvisorsForBean(bean.getClass(), beanName, null);
 		if (specificInterceptors != DO_NOT_PROXY) {
 			this.advisedBeans.put(cacheKey, Boolean.TRUE);
@@ -55,28 +56,72 @@ Spring AOP的通常都是由BeanPostProcessor的实现类对bean进行自定义�
 		return bean;
 	}
 
+	protected Object createProxy(Class<?> beanClass, @Nullable String beanName,
+			@Nullable Object[] specificInterceptors, TargetSource targetSource) {
+
+		if (this.beanFactory instanceof ConfigurableListableBeanFactory) {
+			AutoProxyUtils.exposeTargetClass((ConfigurableListableBeanFactory) this.beanFactory, beanName, beanClass);
+		}
+		
+		//创建代理类的核心就是ProxyFactory
+		ProxyFactory proxyFactory = new ProxyFactory();
+		proxyFactory.copyFrom(this);
+
+		if (!proxyFactory.isProxyTargetClass()) {
+			if (shouldProxyTargetClass(beanClass, beanName)) {
+				proxyFactory.setProxyTargetClass(true);
+			}
+			else {
+				evaluateProxyInterfaces(beanClass, proxyFactory);
+			}
+		}
+
+		Advisor[] advisors = buildAdvisors(beanName, specificInterceptors);
+		proxyFactory.addAdvisors(advisors);
+		proxyFactory.setTargetSource(targetSource);
+		customizeProxyFactory(proxyFactory);
+
+		proxyFactory.setFrozen(this.freezeProxy);
+		if (advisorsPreFiltered()) {
+			proxyFactory.setPreFiltered(true);
+		}
+
+		//通过ProxyFactory的工厂方法取得代理类
+		return proxyFactory.getProxy(getProxyClassLoader());
+	}
 ```
-Spring AOP的核心在于如何将横切逻辑织入到关注点中，织入的关键在AopProxy接口，该接口定义如下：
+创建代理类的核心在于使用工厂类ProxyFactory来创建代理类，我们来看一下ProxyFacotry类：
 
 ```java
-public interface AopProxy {
+public class ProxyFactory extends ProxyCreatorSupport {
+	private AopProxyFactory aopProxyFactory;
 
-	Object getProxy();
+	public Object getProxy(@Nullable ClassLoader classLoader) {
+		return createAopProxy().getProxy(classLoader);
+	}
 
-	Object getProxy(@Nullable ClassLoader classLoader);
+	protected final synchronized AopProxy createAopProxy() {
+		if (!this.active) {
+			activate();
+		}
+		return getAopProxyFactory().createAopProxy(this);
+	}
+
+	public AopProxyFactory getAopProxyFactory() {
+		return this.aopProxyFactory;
+	}
 }
 ```
 
-Spring AOP使用AopProxy对不同的代理实现进行了适度的抽象，针对不同的代理实现提供相应的AopProxy子类实现。通常的实现类有两种：JdkDynamicAopProxy以及CglibAopProxy(Spring4.0之后使用 ObjenesisCglibAopProxy），这两者分别使用JDK的动态代理和CGLIB动态代理生成织入对象的子类。不同AopProxy实现的实例化过程采用抽象工厂模式进行封装， 即通过AopProxyFactory进行。我们来看AopProxyFactory接口的定义：
+通过ProxyFactory，我们可以获取到具体的AopProxyFactory，AopProxyFactory接口如下：
 
 ```java
 public interface AopProxyFactory {
-
 	AopProxy createAopProxy(AdvisedSupport config) throws AopConfigException;
 }
 ```
 
-AopProxyFactory通过传入的AdvisedSupport实例提供的相关信息，来决定生成什么类型的AopProxy，我们可以看它的具体实现类DefaultAopProxyFactory：
+AopProxyFactory就是创建AOP代理的关键接口了，可以通过传入的AdvisedSupport实例提供的相关信息，来决定生成什么类型的AopProxy，可以看Spring AOP里该接口的实现类DefaultAopProxyFactory：
 
 ```java
 public class DefaultAopProxyFactory implements AopProxyFactory, Serializable {
@@ -135,3 +180,102 @@ public class AdvisedSupport extends ProxyConfig implements Advised {
 + exposeProxy，设置该属性可以让AOP框架生成代理对象时，将当前代理对象绑定到ThreadLocal。如果目标对象需要访问当前代理对象，可以通过AopContext.currentProxy()获取。
 + frozen，该属性设置为true，则针对代理对象生成的配置信息完成就不允许改动，可以优化代理对象生成的性能。
 
+回到AopProxyFactory上来，Spring AOP的核心在于如何将横切逻辑织入到关注点中，Spring AOP通过AopProxyFactory的AopcreateProxy方法创建代理类，该方法返回一个AopProxy：
+
+```java
+public interface AopProxy {
+
+	Object getProxy();
+
+	Object getProxy(@Nullable ClassLoader classLoader);
+}
+```
+
+Spring AOP使用AopProxy对不同的代理实现进行了适度的抽象，针对不同的代理实现提供相应的AopProxy子类实现。通常的实现类有两种：JdkDynamicAopProxy以及CglibAopProxy(Spring4.0之后使用 ObjenesisCglibAopProxy），这两者分别使用JDK的动态代理和CGLIB动态代理生成织入对象的子类。先看一下JdkDynamicAopProxy：
+```java
+final class JdkDynamicAopProxy implements AopProxy, InvocationHandler, Serializable {
+	@Override
+	public Object getProxy(@Nullable ClassLoader classLoader) {
+		if (logger.isDebugEnabled()) {
+			logger.debug("Creating JDK dynamic proxy: target source is " + this.advised.getTargetSource());
+		}
+		Class<?>[] proxiedInterfaces = AopProxyUtils.completeProxiedInterfaces(this.advised, true);
+		findDefinedEqualsAndHashCodeMethods(proxiedInterfaces);
+		return Proxy.newProxyInstance(classLoader, proxiedInterfaces, this);
+	}
+
+	@Override
+	@Nullable
+	public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+		MethodInvocation invocation;
+		Object oldProxy = null;
+		boolean setProxyContext = false;
+
+		TargetSource targetSource = this.advised.targetSource;
+		Object target = null;
+
+		try {
+			if (!this.equalsDefined && AopUtils.isEqualsMethod(method)) {
+				return equals(args[0]);
+			}
+			else if (!this.hashCodeDefined && AopUtils.isHashCodeMethod(method)) {
+				return hashCode();
+			}
+			else if (method.getDeclaringClass() == DecoratingProxy.class) {
+				return AopProxyUtils.ultimateTargetClass(this.advised);
+			}
+			else if (!this.advised.opaque && method.getDeclaringClass().isInterface() &&
+					method.getDeclaringClass().isAssignableFrom(Advised.class)) {
+				return AopUtils.invokeJoinpointUsingReflection(this.advised, method, args);
+			}
+
+			Object retVal;
+
+			if (this.advised.exposeProxy) {
+				//这一步把代理类加入到ThreadLocal里
+				oldProxy = AopContext.setCurrentProxy(proxy);
+				setProxyContext = true;
+			}
+
+			target = targetSource.getTarget();
+			Class<?> targetClass = (target != null ? target.getClass() : null);
+
+			//这一步取得所有要切入的横切逻辑的链
+			List<Object> chain = this.advised.getInterceptorsAndDynamicInterceptionAdvice(method, targetClass);
+
+			//没有切面则反射调用方法执行
+			if (chain.isEmpty()) {
+				Object[] argsToUse = AopProxyUtils.adaptArgumentsIfNecessary(method, args);
+				retVal = AopUtils.invokeJoinpointUsingReflection(target, method, argsToUse);
+			}
+			else {
+				//拦截链和方法一起执行
+				invocation = new ReflectiveMethodInvocation(proxy, target, method, args, targetClass, chain);
+				retVal = invocation.proceed();
+			}
+
+			Class<?> returnType = method.getReturnType();
+			if (retVal != null && retVal == target &&
+					returnType != Object.class && returnType.isInstance(proxy) &&
+					!RawTargetAccess.class.isAssignableFrom(method.getDeclaringClass())) {
+				retVal = proxy;
+			}
+			else if (retVal == null && returnType != Void.TYPE && returnType.isPrimitive()) {
+				throw new AopInvocationException(
+						"Null return value from advice does not match primitive return type for: " + method);
+			}
+			return retVal;
+		}
+		finally {
+			if (target != null && !targetSource.isStatic()) {
+				targetSource.releaseTarget(target);
+			}
+			if (setProxyContext) {
+				AopContext.setCurrentProxy(oldProxy);
+			}
+		}
+	}
+}
+```
+
+JdkDynamicAopProxy实际上实现了Jdk动态代理的关键接口InvocationHandler，具体就不详述了。ObjenesisCglibAopProxy使用Cglib动态代理，具体代码就不展示了。
