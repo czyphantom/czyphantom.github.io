@@ -44,13 +44,10 @@ tags:
 这三个在DefaultSingletonBeanRegistry中都有定义：
 
 ```java
-	/** Cache of singleton objects: bean name --> bean instance */
 	private final Map<String, Object> singletonObjects = new ConcurrentHashMap<String, Object>(64);
 
-	/** Cache of singleton factories: bean name --> ObjectFactory */
 	private final Map<String, ObjectFactory<?>> singletonFactories = new HashMap<String, ObjectFactory<?>>(16);
 
-	/** Cache of early singleton objects: bean name --> bean instance */
 	private final Map<String, Object> earlySingletonObjects = new HashMap<String, Object>(16);
 ```
 
@@ -66,9 +63,6 @@ tags:
 						return createBean(beanName, mbd, args);
                     }
 					catch (BeansException ex) {
-					    // Explicitly remove instance from singleton cache: It might have been put there
-						// eagerly by the creation process, to allow for circular reference resolution.
-						// Also remove any beans that received a temporary reference to the bean.
 						destroySingleton(beanName);
 						throw ex;
 					}
