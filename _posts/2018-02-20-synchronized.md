@@ -10,15 +10,15 @@ tags:
     - Java并发
 ---
 
-# synchronized简述
+# 简述
 
 如果声明一个方法或代码块声明为synchronized，那么该代码块在一个时刻只能由一个线程执行该方法或者代码块（可以认为是原子性，一个线程要么把这个代码块执行完，要么阻塞等待获得锁），另外synchronized可以保证可见性，线程对变量的更新先于现有synchronized块所进行的更新，当进入另一个由同一个锁保护的synchronized块时，可以立刻看到这个更新（也就是说synchronized块之前的变量更新一定不会被重排序优化，且在获得锁之前的更新对另一个由已经进入同一个锁保护的代码块的线程是立即可见的）。一个线程如果想要访问由synchronized修饰的对象，首先得获得锁，退出时或者抛出异常必须释放锁。
 
-# synchronized用法
+# 用法
 
 synchronized可以用来修饰方法，静态方法和代码块。当修饰方法时，锁是当前实例对象；当修饰静态方法时，锁是当前对象的Class对象；当修饰代码块时，锁是synchronized括号内的对象。
 
-# synchronized实现原理
+# 实现原理
 
 由synchronized修饰的方法和synchronized修饰的代码块的实现原理也不尽相同，前者的实现由读取方法的ACC_SYNCHRONIZED标志来隐式实现，后者是由进入管程对象实现的（monitorenter和monitorexit指令）。monitorenter指令是在编译后插入到同步代码块的开始位置，而monitorexit是插入到方法结束处和异常处， JVM要保证每个monitorenter必须有对应的monitorexit与之配对。任何对象都有一个monitor与之关联，当且一个monitor被持有后，它将处于锁定状态。线程执行到monitorenter指令时，将会尝试获取对象所对应的 monitor的所有权，即尝试获得对象的锁。
 
@@ -110,7 +110,6 @@ javap得到关键字节码如下：
 ![轻量级锁](http://ifeve.com/wp-content/uploads/2012/10/%E8%BD%BB%E9%87%8F%E7%BA%A7%E9%94%81.png)
 
 简单的说，synchronized的执行过程如下：
-
 1. 检测Mark Word里面是不是当前线程的ID，如果是，表示当前线程处于偏向锁。
 2. 如果不是，则使用CAS将当前线程的ID替换Mard Word，如果成功则表示当前线程获得偏向锁，置偏向标志位1。
 3. 如果失败，则说明发生竞争，撤销偏向锁，进而升级为轻量级锁。
