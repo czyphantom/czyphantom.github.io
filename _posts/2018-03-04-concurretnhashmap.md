@@ -29,9 +29,9 @@ JDK1.8之前的ConcurrentHashMap采用分段锁的机制，实现并发的更新
     private transient volatile int sizeCtl;
 
     //hash值是-1，表示这是一个forwardNode节点
-    static final int MOVED     = -1; 
+    static final int MOVED = -1; 
     //hash值是-2，表示这时一个TreeBin节点
-    static final int TREEBIN   = -2; 
+    static final int TREEBIN = -2; 
 
     //相当于hash方法，注意一般的对象得到的hash值都是正的，负值有特殊含义
     static final int spread(int h) {
@@ -359,5 +359,4 @@ get方法比较简单，大体上和HashMap的类似，注意get方法没有采�
 # 参考文章
 
 [jdk1.8的HashMap和ConcurrentHashMap](https://yq.aliyun.com/articles/68282)
-
 [ConcurrentHashMap源码分析（JDK8版本）](http://blog.csdn.net/u010723709/article/details/48007881)

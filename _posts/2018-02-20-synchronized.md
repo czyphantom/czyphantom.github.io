@@ -121,7 +121,5 @@ javap得到关键字节码如下：
 # 参考文章
 
 [深入理解Java并发之synchronized实现原理](http://blog.csdn.net/javazejian/article/details/72828483#synchronized%E7%9A%84%E4%B8%89%E7%A7%8D%E5%BA%94%E7%94%A8%E6%96%B9%E5%BC%8F)
-
 [聊聊并发（二）Java SE1.6中的Synchronized](http://ifeve.com/java-synchronized/)
-
 [java中的锁--偏向锁、轻量级锁、自旋锁、重量级锁](http://blog.csdn.net/zqz_zqz/article/details/70233767)
