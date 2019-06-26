@@ -17,7 +17,6 @@ tags:
 Java注解是附加在代码中的一些元信息，用于一些工具在编译、运行时进行解析和使用，起到说明、配置的功能。注解不会也不能影响代码的实际逻辑，仅仅起到辅助性的作用。包含在java.lang.annotation包中。
 
 注解的作用：
-
 1. 生成文档。
 2. 实现配置文件的功能，减少复杂的配置文件使用。
 3. 编译前进行格式检查，比如@Override注解。
@@ -27,7 +26,6 @@ Java注解是附加在代码中的一些元信息，用于一些工具在编译�
 # 元注解
 
 在java.lang.annontation包下有4个元注解，用来注解其他注解：
-
 1. @Retention – 定义该注解的生命周期，分别可以定义编译阶段丢弃，类加载阶段丢弃，始终不丢弃。
 2. @Target – 表示该注解用于什么地方。默认值为任何元素，表示该注解用于什么地方。
 3. @Documented – 一个简单的Annotations标记注解，表示是否将注解信息添加在java文档中。
@@ -67,7 +65,7 @@ public class NameUtil {
         for(Field field :fields) {
             if(field.isAnnotationPresent(Name.class) {
                 Name name = (Name) field.getAnnotation(Name.class);
-                String  myName ="名："+name.name();
+                String myName ="名："+name.name();
                 System.out.println(myName);
             }
         }

@@ -122,11 +122,6 @@ Fork/Join框架是Java 7提供的一个用于并行执行任务的框架，是�
 示例代码如下：
 
 ```java
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.Future;
-import java.util.concurrent.RecursiveTask;
-
 public class CountTask extends RecursiveTask<Integer> {
 	private static final int THRESHOLD = 2;　　
 	private int start;
@@ -311,13 +306,7 @@ CyclicBarrier可以用于多线程计算数据，最后合并计算结果的场�
         boolean broken = false;
 	}
 
-	public int await() throws InterruptedException, BrokenBarrierException {
-        try {
-            return dowait(false, 0L);
-        } catch (TimeoutException toe) {
-            throw new Error(toe);
-        }
-    }
+
 	
 	private void breakBarrier() {
         generation.broken = true;
@@ -326,13 +315,19 @@ CyclicBarrier可以用于多线程计算数据，最后合并计算结果的场�
 	}
 
 	private void nextGeneration() {
-        // signal completion of last generation
         trip.signalAll();
-        // set up next generation
         count = parties;
         generation = new Generation();
     }
 	
+    public int await() throws InterruptedException, BrokenBarrierException {
+        try {
+            return dowait(false, 0L);
+        } catch (TimeoutException toe) {
+            throw new Error(toe);
+        }
+    }
+
     private int dowait(boolean timed, long nanos)
         throws InterruptedException, BrokenBarrierException,
                TimeoutException {
@@ -340,17 +335,17 @@ CyclicBarrier可以用于多线程计算数据，最后合并计算结果的场�
         lock.lock();
         try {
             final Generation g = generation;
-
+            //该状态意味着屏障已被打破
             if (g.broken)
                 throw new BrokenBarrierException();
-
+            //如果线程被中断，则打破屏障
             if (Thread.interrupted()) {
                 breakBarrier();
                 throw new InterruptedException();
             }
 
 			int index = --count;
-			//可以打破屏障了
+			//所有线程都到达了屏障
             if (index == 0) {
                 boolean ranAction = false;
                 try {
@@ -358,6 +353,7 @@ CyclicBarrier可以用于多线程计算数据，最后合并计算结果的场�
                     if (command != null)
                         command.run();
                     ranAction = true;
+                    //相当于重置屏障
                     nextGeneration();
                     return 0;
                 } finally {
@@ -366,9 +362,9 @@ CyclicBarrier可以用于多线程计算数据，最后合并计算结果的场�
                 }
             }
 
-            // loop until tripped, broken, interrupted, or timed out
             for (;;) {
                 try {
+                    //通过等待机制
                     if (!timed)
                         trip.await();
                     else if (nanos > 0L)
@@ -378,9 +374,6 @@ CyclicBarrier可以用于多线程计算数据，最后合并计算结果的场�
                         breakBarrier();
                         throw ie;
                     } else {
-                        // We're about to finish waiting even if we had not
-                        // been interrupted, so this interrupt is deemed to
-                        // "belong" to subsequent execution.
                         Thread.currentThread().interrupt();
                     }
                 }
@@ -401,6 +394,8 @@ CyclicBarrier可以用于多线程计算数据，最后合并计算结果的场�
         }
     }
 ```
+
+可以见到，CyclicBarrier的基本思路是wait/notify机制，调用await方法的线程会阻塞在条件上，等到所有线程都到达屏障之后，所有线程都会抛出异常返回。
 
 # Semaphore
 
@@ -461,7 +456,7 @@ Semaphore的构造方法Semaphore（int permits）接受一个整型的数字，
             for (;;) {
                 int current = getState();
                 int next = current + releases;
-                if (next < current) // overflow
+                if (next < current) 
                     throw new Error("Maximum permit count exceeded");
                 if (compareAndSetState(current, next))
                     return true;
@@ -472,7 +467,7 @@ Semaphore的构造方法Semaphore（int permits）接受一个整型的数字，
             for (;;) {
                 int current = getState();
                 int next = current - reductions;
-                if (next > current) // underflow
+                if (next > current) 
                     throw new Error("Permit count underflow");
                 if (compareAndSetState(current, next))
                     return;
@@ -535,180 +530,6 @@ public class ExchangerTest {
 		threadPool.shutdown();
 	}
 }
-```
-
-### Exchanger实现
-
-```java
-    public Exchanger() {
-        participant = new Participant();
-	}
-	
-    static final class Participant extends ThreadLocal<Node> {
-        public Node initialValue() { return new Node(); }
-	}
-	
-	private volatile Node[] arena;
-		
-    public V exchange(V x) throws InterruptedException {
-        Object v;
-        Object item = (x == null) ? NULL_ITEM : x; // translate null args
-        if ((arena != null ||
-             (v = slotExchange(item, false, 0L)) == null) &&
-            ((Thread.interrupted() || // disambiguates null return
-              (v = arenaExchange(item, false, 0L)) == null)))
-            throw new InterruptedException();
-        return (v == NULL_ITEM) ? null : (V)v;
-	}
-	
-	    private final Object slotExchange(Object item, boolean timed, long ns) {
-        Node p = participant.get();
-        Thread t = Thread.currentThread();
-        if (t.isInterrupted()) // preserve interrupt status so caller can recheck
-            return null;
-
-        for (Node q;;) {
-            if ((q = slot) != null) {
-                if (U.compareAndSwapObject(this, SLOT, q, null)) {
-                    Object v = q.item;
-                    q.match = item;
-                    Thread w = q.parked;
-                    if (w != null)
-                        U.unpark(w);
-                    return v;
-                }
-                // create arena on contention, but continue until slot null
-                if (NCPU > 1 && bound == 0 &&
-                    U.compareAndSwapInt(this, BOUND, 0, SEQ))
-                    arena = new Node[(FULL + 2) << ASHIFT];
-            }
-            else if (arena != null)
-                return null; // caller must reroute to arenaExchange
-            else {
-                p.item = item;
-                if (U.compareAndSwapObject(this, SLOT, null, p))
-                    break;
-                p.item = null;
-            }
-        }
-
-        // await release
-        int h = p.hash;
-        long end = timed ? System.nanoTime() + ns : 0L;
-        int spins = (NCPU > 1) ? SPINS : 1;
-        Object v;
-        while ((v = p.match) == null) {
-            if (spins > 0) {
-                h ^= h << 1; h ^= h >>> 3; h ^= h << 10;
-                if (h == 0)
-                    h = SPINS | (int)t.getId();
-                else if (h < 0 && (--spins & ((SPINS >>> 1) - 1)) == 0)
-                    Thread.yield();
-            }
-            else if (slot != p)
-                spins = SPINS;
-            else if (!t.isInterrupted() && arena == null &&
-                     (!timed || (ns = end - System.nanoTime()) > 0L)) {
-                U.putObject(t, BLOCKER, this);
-                p.parked = t;
-                if (slot == p)
-                    U.park(false, ns);
-                p.parked = null;
-                U.putObject(t, BLOCKER, null);
-            }
-            else if (U.compareAndSwapObject(this, SLOT, p, null)) {
-                v = timed && ns <= 0L && !t.isInterrupted() ? TIMED_OUT : null;
-                break;
-            }
-        }
-        U.putOrderedObject(p, MATCH, null);
-        p.item = null;
-        p.hash = h;
-        return v;
-	}
-	
-	private final Object arenaExchange(Object item, boolean timed, long ns) {
-        Node[] a = arena;
-        Node p = participant.get();
-        for (int i = p.index;;) {                      // access slot at i
-            int b, m, c; long j;                       // j is raw array offset
-            Node q = (Node)U.getObjectVolatile(a, j = (i << ASHIFT) + ABASE);
-            if (q != null && U.compareAndSwapObject(a, j, q, null)) {
-                Object v = q.item;                     // release
-                q.match = item;
-                Thread w = q.parked;
-                if (w != null)
-                    U.unpark(w);
-                return v;
-            }
-            else if (i <= (m = (b = bound) & MMASK) && q == null) {
-                p.item = item;                         // offer
-                if (U.compareAndSwapObject(a, j, null, p)) {
-                    long end = (timed && m == 0) ? System.nanoTime() + ns : 0L;
-                    Thread t = Thread.currentThread(); // wait
-                    for (int h = p.hash, spins = SPINS;;) {
-                        Object v = p.match;
-                        if (v != null) {
-                            U.putOrderedObject(p, MATCH, null);
-                            p.item = null;             // clear for next use
-                            p.hash = h;
-                            return v;
-                        }
-                        else if (spins > 0) {
-                            h ^= h << 1; h ^= h >>> 3; h ^= h << 10; // xorshift
-                            if (h == 0)                // initialize hash
-                                h = SPINS | (int)t.getId();
-                            else if (h < 0 &&          // approx 50% true
-                                     (--spins & ((SPINS >>> 1) - 1)) == 0)
-                                Thread.yield();        // two yields per wait
-                        }
-                        else if (U.getObjectVolatile(a, j) != p)
-                            spins = SPINS;       // releaser hasn't set match yet
-                        else if (!t.isInterrupted() && m == 0 &&
-                                 (!timed ||
-                                  (ns = end - System.nanoTime()) > 0L)) {
-                            U.putObject(t, BLOCKER, this); // emulate LockSupport
-                            p.parked = t;              // minimize window
-                            if (U.getObjectVolatile(a, j) == p)
-                                U.park(false, ns);
-                            p.parked = null;
-                            U.putObject(t, BLOCKER, null);
-                        }
-                        else if (U.getObjectVolatile(a, j) == p &&
-                                 U.compareAndSwapObject(a, j, p, null)) {
-                            if (m != 0)                // try to shrink
-                                U.compareAndSwapInt(this, BOUND, b, b + SEQ - 1);
-                            p.item = null;
-                            p.hash = h;
-                            i = p.index >>>= 1;        // descend
-                            if (Thread.interrupted())
-                                return null;
-                            if (timed && m == 0 && ns <= 0L)
-                                return TIMED_OUT;
-                            break;                     // expired; restart
-                        }
-                    }
-                }
-                else
-                    p.item = null;                     // clear offer
-            }
-            else {
-                if (p.bound != b) {                    // stale; reset
-                    p.bound = b;
-                    p.collides = 0;
-                    i = (i != m || m == 0) ? m : m - 1;
-                }
-                else if ((c = p.collides) < m || m == FULL ||
-                         !U.compareAndSwapInt(this, BOUND, b, b + SEQ + 1)) {
-                    p.collides = c + 1;
-                    i = (i == 0) ? m : i - 1;          // cyclically traverse
-                }
-                else
-                    i = m + 1;                         // grow
-                p.index = i;
-            }
-        }
-    }
 ```
 
 # 参考文章

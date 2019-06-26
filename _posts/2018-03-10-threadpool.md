@@ -267,6 +267,7 @@ ThreadPoolExecutor的执行示意图如下：
         try {
             for (Worker w : workers) {
                 Thread t = w.thread;
+                //注意这个tryLock方法，Worker在运行之前都会获得一个锁，tryLock方法执行成功意味着该Worker不在运行
                 if (!t.isInterrupted() && w.tryLock()) {
                     try {
                         t.interrupt();
@@ -353,7 +354,6 @@ ThreadPoolExecutor的执行示意图如下：
 ## 监控线程池
 
 可以通过线程池提供的参数进行监控，在监控线程池的时候可以使用以下属性：
-
 + taskCount：线程池需要执行的任务数量。
 + completedTaskCount：线程池在运行过程中已完成的任务数量，小于或等于taskCount。
 + largestPoolSize：线程池里曾经创建过的最大线程数量。通过这个数据可以知道线程池是否曾经满过。如该数值等于线程池的最大大小，则表示线程池曾经满过。
@@ -365,7 +365,5 @@ ThreadPoolExecutor的执行示意图如下：
 ## 参考文章
 
 [JDK1.8源码分析之ThreadPoolExecutor](https://www.cnblogs.com/leesf456/p/5585627.html)
-
 [深入理解java线程池—ThreadPoolExecutor](https://www.jianshu.com/p/ade771d2c9c0)
-
 方腾飞、魏鹏、程晓明：Java并发编程的艺术
