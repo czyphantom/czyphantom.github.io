@@ -21,8 +21,7 @@ Spring的运行基础是应用上下文，即ApplicationContext，其典型实�
 接着调用以下构造器，主要目的是设置资源加载和解析类，设置配置路径
 
 ```java
-    public ClassPathXmlApplicationContext(String[] configLocations, boolean refresh,        ApplicationContext parent)
-			throws BeansException {
+    public ClassPathXmlApplicationContext(String[] configLocations, boolean refresh, ApplicationContext parent) throws BeansException {
 		//该方法一直往上调用到AbstractApplicationContext的构造器，主要就是设置ResourcePatternResolver，使用的实例为PathMatchingResourcePatternResolver
 		super(parent);
 		//为ApplicationContext设置配置路径
@@ -89,24 +88,32 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 	}
 ```
 
+从refresh方法我们可以看出，实例化ApplicationContext其实做了很多步骤：
+1. 获取BeanFactory。
+2. 对BeanFactory设置其他后置处理器。
+3. 调用后置处理器。
+4. 初始化特殊的Bean
+5. 检查并注册监听Beans。
+6. 实例化所有非延迟初始化的单例Bean
+
 ## 构建BeanFactory
 
 构建BeanFactory的方法由AbstractRefreshableApplicationContext实现，代码如下：
 
 ```java
 	protected final void refreshBeanFactory() throws BeansException {
-        //如果已经有BeanFactory了，说明有其他线程创建了，销毁所有的单例bean,关闭此次的BeanFactory
+      //如果已经有BeanFactory了，说明有其他线程创建了，销毁所有的单例bean,关闭此次的BeanFactory
 		if (hasBeanFactory()) {
 			destroyBeans();
 			closeBeanFactory();
 		}
 		try {
-            //创建新的BeanFactory
+         //创建新的BeanFactory
 			DefaultListableBeanFactory beanFactory = createBeanFactory();
 			beanFactory.setSerializationId(getId());
-            //主要定义是否允许bean定义覆盖，是否允许循环依赖（默认允许），构造方法的循环依赖是不允许的
+         //主要定义是否允许bean定义覆盖，是否允许循环依赖（默认允许），构造方法的循环依赖是不允许的
 			customizeBeanFactory(beanFactory);
-            //使用beanFactory加载bean定义，重点
+         //使用beanFactory加载bean定义，重点
 			loadBeanDefinitions(beanFactory);
 			synchronized (this.beanFactoryMonitor) {
 				this.beanFactory = beanFactory;
@@ -284,9 +291,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 该方法首先通过DOM节点得到了一个BeanDefinitionHolder（这个类后面会说明用处），接着调用BeanDefinitionReaderUtils.registerBeanDefinition方法来注册Bean定义：
 
 ```java
-    public static void registerBeanDefinition(
-            BeanDefinitionHolder definitionHolder, BeanDefinitionRegistry registry)
-            throws BeanDefinitionStoreException {
+    public static void registerBeanDefinition(BeanDefinitionHolder definitionHolder, BeanDefinitionRegistry registry) throws BeanDefinitionStoreException {
 
         //获得bean的名称
         String beanName = definitionHolder.getBeanName();
@@ -334,7 +339,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
                 }
             }
             else {
-                //最终放进map 实现注册
+                //最终放进map实现注册
                 this.beanDefinitionMap.put(beanName, beanDefinition);
                 this.beanDefinitionNames.add(beanName);
                 this.manualSingletonNames.remove(beanName);
@@ -373,10 +378,10 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 		}
 
 		try {
-            //重点，创建bean定义
+         //重点，创建bean定义
 			AbstractBeanDefinition bd = createBeanDefinition(className, parent);
 
-            //以下处理bean标签下的其他内容，省略不看了
+         //以下处理bean标签下的其他内容，省略不看了
 			parseBeanDefinitionAttributes(ele, beanName, containingBean, bd);
 			bd.setDescription(DomUtils.getChildElementValueByTagName(ele, DESCRIPTION_ELEMENT));
 
