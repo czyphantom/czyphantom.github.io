@@ -18,19 +18,21 @@ tags:
 int max = 10000;
 int min = 0;
 
+//求某个最大值
 public int find(int x) {
-    //搜索区间左闭右开
-    int low = min, high = max+1;
-    while (low + 1 < high) {
+    int low = min, high = max;
+    int ans = Integer.MIN_VALUE;
+    while (low <= high) {
         int mid = (low + high)/2;
         if (check(mid)) {
-            l = mid;
+            low = mid+1;
+            ans = mid;
         }
         else {
-            high = mid;
+            high = mid - 1;
         }
     }
-    return l;
+    return ans;
 }
 
 private boolean check(int x) {
