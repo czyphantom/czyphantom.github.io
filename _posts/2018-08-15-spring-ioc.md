@@ -10,7 +10,7 @@ tags:
     - Spring
 ---
 
-Spring的运行基础是应用上下文，即ApplicationContext，其典型实现类ClassPathXmlApplicationContext，继承链为ClassPathXmlApplicationContext -> AbstractXmlApplicationContext -> AbstractRefreshableApplicationContext -> AbstractApplicationContext -> DefaultResourceLoader -> ResourceLoader。ResourceLoader为资源加载器，负责查找和定位资源。ClassPathXmlApplicationContext通过以下构造器加载配置文件：
+Spring的运行基础是应用上下文，即ApplicationContext，其典型实现类ClassPathXmlApplicationContext，继承链为ClassPathXmlApplicationContext -> AbstractXmlApplicationContext -> AbstractRefreshableApplicationContext -> AbstractApplicationContext -> DefaultResourceLoader -> ResourceLoader。最上层的ResourceLoader为资源加载器，负责查找和定位资源。ClassPathXmlApplicationContext通过以下构造器加载配置文件：
 
 ```java
     public ClassPathXmlApplicationContext(String configLocation) throws BeansException {
@@ -50,7 +50,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 				//对BeanFactory设置特殊的后置处理器，由需要的子类实现
 				postProcessBeanFactory(beanFactory);
 
-				//调用后置处理器
+				//调用BeanFacotry后置处理器
 				invokeBeanFactoryPostProcessors(beanFactory);
 
 				//注册bean的后置处理器
@@ -76,13 +76,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 			}
 
 			catch (BeansException ex) {
-				logger.warn("Exception encountered during context initialization - cancelling refresh attempt", ex);
-
-				destroyBeans();
-
-				cancelRefresh(ex);
-
-				throw ex;
+				//略
 			}
 		}
 	}
@@ -90,11 +84,11 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 
 从refresh方法我们可以看出，实例化ApplicationContext其实做了很多步骤：
 1. 获取BeanFactory。
-2. 对BeanFactory设置其他后置处理器。
+2. 对BeanFactory设置后置处理器。
 3. 调用后置处理器。
-4. 初始化特殊的Bean
+4. 注册BeanPostProcessor。
 5. 检查并注册监听Beans。
-6. 实例化所有非延迟初始化的单例Bean
+6. 实例化所有非延迟初始化的单例Bean。
 
 ## 构建BeanFactory
 
@@ -102,7 +96,6 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 
 ```java
 	protected final void refreshBeanFactory() throws BeansException {
-      //如果已经有BeanFactory了，说明有其他线程创建了，销毁所有的单例bean,关闭此次的BeanFactory
 		if (hasBeanFactory()) {
 			destroyBeans();
 			closeBeanFactory();
@@ -128,7 +121,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 构建是BeanFactory的核心是加载bean定义，即方法loadBeanDefinitions,此方法调用AbstractXmlApplicationContext的loadBeanDefinitions方法，最终调用XmlBeanDefinitionReader中的doLoadBeanDefinitions方法,如下：
 
 ```java
-	//AbstractXmlApplicationContext
+	
 	protected void loadBeanDefinitions(DefaultListableBeanFactory beanFactory) throws BeansException, IOException {
 		XmlBeanDefinitionReader beanDefinitionReader = new XmlBeanDefinitionReader(beanFactory);
 
@@ -151,7 +144,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 		}
 	}
 
-	//AbstractBeanDefinitionReader
+	
 	public int loadBeanDefinitions(Resource... resources) throws BeanDefinitionStoreException {
 		Assert.notNull(resources, "Resource array must not be null");
 		int counter = 0;
@@ -197,7 +190,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 	}
 ```
 
-该方法首先加载配置文件的Document，接着注册bean定义。注册bean定义最终调用DefaultBeanDefinitionDocumentReader的registerBeanDefinitions方法，此方法首先获得Document的根元素，接着调用doRegisterBeanDefinitions注册，注册的方法代码如下：
+加载Bean定义主要根据配置文件抽象为资源，根据资源的inputstream使用DOM方式加载为Document，接着注册Bean定义。注册bean定义最终调用DefaultBeanDefinitionDocumentReader的registerBeanDefinitions方法，代码如下：
 
 ```java
 	protected void doRegisterBeanDefinitions(Element root) {
@@ -213,18 +206,16 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 				}
 			}
 		}
-
 		//空实现，目的在于给子类一个把自定义的标签转为Spring标准标签的机会
 		preProcessXml(root);
 		parseBeanDefinitions(root, this.delegate);
 		//重点，解析根元素
 		postProcessXml(root);
-
 		this.delegate = parent;
 	}    
 ```
 
-通过使用parseBeanDefinitions方法来解析根元素：
+注册Bean定义首先需要根据加载的XML文件形成的Document，并对其中标签进行解析，首先加载根元素解析，通过使用parseBeanDefinitions方法来解析根元素：
 
 ```java
 	protected void parseBeanDefinitions(Element root, BeanDefinitionParserDelegate delegate) {
@@ -235,6 +226,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 				if (node instanceof Element) {
 					Element ele = (Element) node;
 					if (delegate.isDefaultNamespace(ele)) {
+                  //解析普通节点
 						parseDefaultElement(ele, delegate);
 					}
 					else {
@@ -250,7 +242,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 	}    
 ```
 
-此方法获得根节点的每一个子节点后，调用parseDefaultElement方法解析普通节点，接着使用processBeanDefinition方法处理普通bean标签：
+解析时，获取根节点的每一个子节点，调用parseDefaultElement方法解析普通节点，接着使用processBeanDefinition方法处理普通bean标签：
 
 ```java
 
@@ -262,20 +254,21 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 			processAliasRegistration(ele);
 		}
 		else if (delegate.nodeNameEquals(ele, BEAN_ELEMENT)) {
+         //处理bean标签
 			processBeanDefinition(ele, delegate);
 		}
 		else if (delegate.nodeNameEquals(ele, NESTED_BEANS_ELEMENT)) {
-			//递归
 			doRegisterBeanDefinitions(ele);
 		}
 	}
 
     protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate) {
-        //解析节点
+       //根据bean标签获取一个BeanDefinitionHolder，beanholder中包含了bean的名称和一些属性信息
         BeanDefinitionHolder bdHolder = delegate.parseBeanDefinitionElement(ele);
         if (bdHolder != null) {
             bdHolder = delegate.decorateBeanDefinitionIfRequired(ele, bdHolder);
             try {
+               //注册bean定义
                 BeanDefinitionReaderUtils.registerBeanDefinition(bdHolder, getReaderContext().getRegistry());
             }
             catch (BeanDefinitionStoreException ex) {
@@ -288,16 +281,14 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
     }
 ```
 
-该方法首先通过DOM节点得到了一个BeanDefinitionHolder（这个类后面会说明用处），接着调用BeanDefinitionReaderUtils.registerBeanDefinition方法来注册Bean定义：
+解析标签时，首先通过DOM节点得到了一个BeanDefinitionHolder（这个类后面会说明用处），接着调用BeanDefinitionReaderUtils.registerBeanDefinition方法来注册Bean定义：
 
 ```java
     public static void registerBeanDefinition(BeanDefinitionHolder definitionHolder, BeanDefinitionRegistry registry) throws BeanDefinitionStoreException {
-
         //获得bean的名称
         String beanName = definitionHolder.getBeanName();
         //这一步注册bean定义
         registry.registerBeanDefinition(beanName, definitionHolder.getBeanDefinition());
-
         String[] aliases = definitionHolder.getAliases();
         if (aliases != null) {
             for (String alias : aliases) {
@@ -313,16 +304,16 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
     public void registerBeanDefinition(String beanName, BeanDefinition beanDefinition)
             throws BeanDefinitionStoreException {
 		//省略
-
         BeanDefinition oldBeanDefinition;
         //beanDefinitionMap是一个键是beanName，值是beanDefinition的ConcurrentHashMap，大小为256
         oldBeanDefinition = this.beanDefinitionMap.get(beanName);
+        //查看是否已经注册，如果已经注册了，则将新的put进去
         if (oldBeanDefinition != null) {
-            //省略一部分判定打日志的代码
+            //省略
             this.beanDefinitionMap.put(beanName, beanDefinition);
         }
         else {
-            //如果bean已经开始创建了，需要保证线程安全
+            //如果bean已经开始创建了，此时要保证线程安全
             //该方法主要通过让beanName绑定到ThreadLocal里判断是否为空以此来判断是否开始
             if (hasBeanCreationStarted()) {
                 synchronized (this.beanDefinitionMap) {
@@ -361,13 +352,11 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 
 ```java
     @Nullable
-	public AbstractBeanDefinition parseBeanDefinitionElement(
-			Element ele, String beanName, @Nullable BeanDefinition containingBean) {
-
-        //将含有beanName的Entry推入一个LinkedList
+	public AbstractBeanDefinition parseBeanDefinitionElement(Element ele, String beanName, @Nullable BeanDefinition containingBean) {
+      //将含有beanName的Entry推入一个LinkedList
 		this.parseState.push(new BeanEntry(beanName));
 
-        //以下获取DOM节点的class标签和parent标签
+      //以下获取DOM节点的class标签和parent标签
 		String className = null;
 		if (ele.hasAttribute(CLASS_ATTRIBUTE)) {
 			className = ele.getAttribute(CLASS_ATTRIBUTE).trim();
@@ -438,7 +427,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 		if (this.logger.isDebugEnabled()) {
 			this.logger.debug("Pre-instantiating singletons in " + this);
 		}
-        //得到所有beanName的名称
+      //得到所有beanName的名称
 		List<String> beanNames = new ArrayList<>(this.beanDefinitionNames);
 
 		//重头戏，开始实例化了，实例化所有非延迟初始化的单例bean
@@ -457,7 +446,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
     }
 ```
 
-实例化的方式实际上就是先取得所有bean的名称，让后循环实例化bean，其中getBean方法是实例化的核心，它最后调用doGetBean方法,我们只看关键部分的代码：
+实例化的方式实际上就是先取得所有bean的名称的List，然后根据beanName调用getBean实例化bean，它最后调用doGetBean方法,我们只看关键部分的代码：
 
 ```java
 	protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredType,
@@ -481,17 +470,17 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 			//如果是普通bean，直接返回sharedInstance，否则返回FactoryBean创建的对象
 			bean = getObjectForBeanInstance(sharedInstance, name, beanName, null);
 		} else {
-      		// 检查一下这个 BeanDefinition 在容器中是否存在
+      		// 检查一下这个BeanDefinition在容器中是否存在
       		BeanFactory parentBeanFactory = getParentBeanFactory();
       		if (parentBeanFactory != null && !containsBeanDefinition(beanName)) {
-         	//如果当前容器不存在这个 BeanDefinition，试试父容器中有没有
-        		String nameToLookup = originalBeanName(name);
+         	   //如果当前容器不存在这个BeanDefinition，试试父容器中有没有
+        		   String nameToLookup = originalBeanName(name);
          		if (args != null) {
-            		// 返回父容器的查询结果
+            		//返回父容器的查询结果
             		return (T) parentBeanFactory.getBean(nameToLookup, args);
          		} else {
             		return parentBeanFactory.getBean(nameToLookup, requiredType);
-        		}
+        		   }
       		}	
  
       		if (!typeCheckOnly) {
@@ -526,7 +515,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
                   			try {
                      			// 执行创建 Bean，详情后面再说
                      			return createBean(beanName, mbd, args);
-                 		 	}
+                 		 	   }
                   			catch (BeansException ex) {
                      			destroySingleton(beanName);
                      			throw ex;
@@ -538,22 +527,10 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
  
          		// 创建 prototype 的实例
          		else if (mbd.isPrototype()) {
-            	// It's a prototype -> create a new instance.
-            		Object prototypeInstance = null;
-            		try {
-               			beforePrototypeCreation(beanName);
-               			// 执行创建 Bean
-               			prototypeInstance = createBean(beanName, mbd, args);
-            		}
-            		finally {
-               			afterPrototypeCreation(beanName);
-            		}
-            		bean = getObjectForBeanInstance(prototypeInstance, name, beanName, mbd);
+            	//省略
          		}
- 
-         		// 如果不是 singleton 和 prototype 的话，需要委托给相应的实现类来处理
          		else {
-				//略
+				   //如果不是 singleton 和 prototype 的话，需要委托给相应的实现类来处理
          		}
       		}
       		catch (BeansException ex) {
@@ -567,7 +544,7 @@ refresh方法是初始化应用上下文的核心，实现在AbstractApplication
 }
 ```
 
-再看实例化bean的方法createBean,该方法最终调用AbstractAutowireCapableBeanFactory的doCreateBean方法，我们看看关键部分代码：
+在getBean时，首先会检查是否该bean已经被创建过，如果有，直接返回。然后对该bean的depends-on属性的bean进行递归实例化，最后再实例化该bean。实例化bean的方法为 createBean,该方法最终调用AbstractAutowireCapableBeanFactory的doCreateBean方法，我们看看关键部分代码：
 
 ```java
 protected Object createBean(String beanName, RootBeanDefinition mbd, Object[] args) throws BeanCreationException {
@@ -583,7 +560,6 @@ protected Object createBean(String beanName, RootBeanDefinition mbd, Object[] ar
       mbdToUse.setBeanClass(resolvedClass);
    }
  
-   //准备方法覆写
    try {
       mbdToUse.prepareMethodOverrides();
    }
@@ -593,7 +569,8 @@ protected Object createBean(String beanName, RootBeanDefinition mbd, Object[] ar
    }
  
    try {
-      // 让BeanPostProcessor在这一步有机会返回代理，而不是 bean 实例，
+      //让BeanPostProcessor在这一步有机会返回代理，而不是bean实例
+      //使用@Autowire注解的bean在这里返回
       Object bean = resolveBeforeInstantiation(beanName, mbdToUse);
       if (bean != null) {
          return bean; 
@@ -611,14 +588,13 @@ protected Object createBean(String beanName, RootBeanDefinition mbd, Object[] ar
    return beanInstance;
 }
 ```
-我们来看看doCreateBean方法的实现：
+注意到resolveBeforeInstantiation方法可以处理@Autowired注解的bean，这也是@Autowired注解的原理。我们来看看doCreateBean方法的实现：
 
 ```java
 protected Object doCreateBean(final String beanName, final RootBeanDefinition mbd, final Object[] args)
       throws BeanCreationException {
  
    BeanWrapper instanceWrapper = null;
-   //不是FactoryBean的单例Bean，获取它的BeanWrapper
    if (mbd.isSingleton()) {
       instanceWrapper = this.factoryBeanInstanceCache.remove(beanName);
    }
@@ -650,7 +626,7 @@ protected Object doCreateBean(final String beanName, final RootBeanDefinition mb
  
    Object exposedObject = bean;
    try {
-      // 这一步负责属性装配
+      //这一步负责属性装配
       populateBean(beanName, mbd, instanceWrapper);
       if (exposedObject != null) {
          //处理init-method等
@@ -672,7 +648,7 @@ protected Object doCreateBean(final String beanName, final RootBeanDefinition mb
 }
 ```
 
-从上面可知创建实例的方法为createBeanInstance，依赖注入是populate方法。先看createBeanInstance方法：
+createBean时通过createBeanInstance创建实例，然后处理循环依赖，接着属性装配，然后再处理init-method。先看createBeanInstance方法：
 
 ```java
 protected BeanWrapper createBeanInstance(String beanName, RootBeanDefinition mbd, Object[] args) {
@@ -680,7 +656,7 @@ protected BeanWrapper createBeanInstance(String beanName, RootBeanDefinition mbd
    Class<?> beanClass = resolveBeanClass(mbd, beanName);
  
    // 省略权限验证和工厂方法
- 
+
    // 如果不是第一次创建，比如第二次创建prototype bean。
    // 这种情况下，我们可以从第一次创建知道，采用无参构造函数，还是构造函数依赖注入来完成实例化
    boolean resolved = false;
@@ -788,7 +764,7 @@ public Object instantiate(RootBeanDefinition bd, String beanName, BeanFactory ow
 }
 ```
 
-再看属性注入：
+创建bean实例时返回的不是bean的实例而是一个BeanWrapper，根据是否有有参构造器判断使用哪种构造器实例化，实例化时使用策略模式确定使用哪种实例化，如果没有方法覆写则使用反射实例化，否则使用CGLIB实例化。再看属性注入：
 
 ```java
 protected void populateBean(String beanName, RootBeanDefinition mbd, BeanWrapper bw) {
@@ -866,11 +842,94 @@ protected void populateBean(String beanName, RootBeanDefinition mbd, BeanWrapper
    // 设置bean实例的属性值
    applyPropertyValues(beanName, mbd, bw, pvs);
 }
+
+	protected void applyPropertyValues(String beanName, BeanDefinition mbd, BeanWrapper bw, PropertyValues pvs) {
+		if (pvs.isEmpty()) {
+			return;
+		}
+
+		if (System.getSecurityManager() != null && bw instanceof BeanWrapperImpl) {
+			((BeanWrapperImpl) bw).setSecurityContext(getAccessControlContext());
+		}
+
+		MutablePropertyValues mpvs = null;
+		List<PropertyValue> original;
+
+		if (pvs instanceof MutablePropertyValues) {
+			mpvs = (MutablePropertyValues) pvs;
+			if (mpvs.isConverted()) {
+				// Shortcut: use the pre-converted values as-is.
+				try {
+					bw.setPropertyValues(mpvs);
+					return;
+				}
+				catch (BeansException ex) {
+					throw new BeanCreationException(
+							mbd.getResourceDescription(), beanName, "Error setting property values", ex);
+				}
+			}
+			original = mpvs.getPropertyValueList();
+		}
+		else {
+			original = Arrays.asList(pvs.getPropertyValues());
+		}
+
+		TypeConverter converter = getCustomTypeConverter();
+		if (converter == null) {
+			converter = bw;
+		}
+		BeanDefinitionValueResolver valueResolver = new BeanDefinitionValueResolver(this, beanName, mbd, converter);
+
+		// Create a deep copy, resolving any references for values.
+		List<PropertyValue> deepCopy = new ArrayList<>(original.size());
+		boolean resolveNecessary = false;
+		for (PropertyValue pv : original) {
+			if (pv.isConverted()) {
+				deepCopy.add(pv);
+			}
+			else {
+				String propertyName = pv.getName();
+				Object originalValue = pv.getValue();
+				Object resolvedValue = valueResolver.resolveValueIfNecessary(pv, originalValue);
+				Object convertedValue = resolvedValue;
+				boolean convertible = bw.isWritableProperty(propertyName) &&
+						!PropertyAccessorUtils.isNestedOrIndexedProperty(propertyName);
+				if (convertible) {
+					convertedValue = convertForProperty(resolvedValue, propertyName, bw, converter);
+				}
+				// Possibly store converted value in merged bean definition,
+				// in order to avoid re-conversion for every created bean instance.
+				if (resolvedValue == originalValue) {
+					if (convertible) {
+						pv.setConvertedValue(convertedValue);
+					}
+					deepCopy.add(pv);
+				}
+				else if (convertible && originalValue instanceof TypedStringValue &&
+						!((TypedStringValue) originalValue).isDynamic() &&
+						!(convertedValue instanceof Collection || ObjectUtils.isArray(convertedValue))) {
+					pv.setConvertedValue(convertedValue);
+					deepCopy.add(pv);
+				}
+				else {
+					resolveNecessary = true;
+					deepCopy.add(new PropertyValue(pv, convertedValue));
+				}
+			}
+		}
+		if (mpvs != null && !resolveNecessary) {
+			mpvs.setConverted();
+		}
+
+		// Set our (possibly massaged) deep copy.
+		try {
+			bw.setPropertyValues(new MutablePropertyValues(deepCopy));
+		}
+		catch (BeansException ex) {
+			throw new BeanCreationException(
+					mbd.getResourceDescription(), beanName, "Error setting property values", ex);
+		}
+	}
 ```
 
-# 总结
-
-在创建应用上下文的过程中，核心的思路就在于：
-1. 加载配置文件并创建bean定义。
-2. 将bean定义注册到BeanFactory。
-3. 实例化所有单例非延迟加载的bean，并完成依赖注入。
+属性注入时，首先进行一些PostProcessor操作，接着判断依赖的属性是否为bean，如果是bean，还需要先初始化依赖的bean，然后处理所有的BeanProcessor，最后再装配属性，属性的装配通过BeanWrapper的PropertyValue属性装配。
