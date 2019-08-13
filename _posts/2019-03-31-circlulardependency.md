@@ -57,7 +57,7 @@ tags:
 	if (mbd.isSingleton()) {
         //这一步提前获取bean
 		sharedInstance = getSingleton(beanName, new ObjectFactory<Object>() {
-			@Override
+				 @Override
 				public Object getObject() throws BeansException {
 					try {
 						return createBean(beanName, mbd, args);

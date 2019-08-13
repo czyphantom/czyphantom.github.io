@@ -128,7 +128,7 @@ public class DefaultAopProxyFactory implements AopProxyFactory, Serializable {
 
 	@Override
 	public AopProxy createAopProxy(AdvisedSupport config) throws AopConfigException {
-        //如果需要优化或者没有实现接口，大部分情况下使用过Cglib动态代理
+        //如果需要优化或者没有实现接口，大部分情况下使用Cglib动态代理
 		if (config.isOptimize() || config.isProxyTargetClass() || hasNoUserSuppliedProxyInterfaces(config)) {
 			Class<?> targetClass = config.getTargetClass();
 			if (targetClass == null) {
