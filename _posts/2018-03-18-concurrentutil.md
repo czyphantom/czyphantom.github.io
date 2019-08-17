@@ -231,7 +231,6 @@ public class CountDownLatchTest {
                 return nextc == 0;
         }
     }
-
 ```
 
 CountDownLatch可以用于实现需要等待多个线程完成之后才能继续进行下一步的场景，比如游戏中必须等待所有玩家都加载好才能开始进行。
@@ -306,8 +305,6 @@ CyclicBarrier可以用于多线程计算数据，最后合并计算结果的场�
         boolean broken = false;
 	}
 
-
-	
 	private void breakBarrier() {
         generation.broken = true;
         count = parties;

@@ -743,7 +743,7 @@ createBean时通过createBeanInstance创建实例，然后处理循环依赖，�
          		for (BeanPostProcessor bp : getBeanPostProcessors()) {
             		if (bp instanceof InstantiationAwareBeanPostProcessor) {
                			InstantiationAwareBeanPostProcessor ibp = (InstantiationAwareBeanPostProcessor) bp;
-               			// 这里有个非常有用的BeanPostProcessor进到这里: AutowiredAnnotationBeanPostProcessor
+               			//这里有个非常有用的BeanPostProcessor进到这里: AutowiredAnnotationBeanPostProcessor
                			pvs = ibp.postProcessPropertyValues(pvs, filteredPds, bw.getWrappedInstance(), beanName);
                			if (pvs == null) {
                   			return;

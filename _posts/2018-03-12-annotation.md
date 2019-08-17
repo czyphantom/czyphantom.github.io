@@ -41,7 +41,6 @@ Java注解是附加在代码中的一些元信息，用于一些工具在编译�
 /**
 * 定义注解
 */
-
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Name {
     public String name() default "xxx";
@@ -50,15 +49,14 @@ public @interface Name {
 /**
 * 注解使用
 */
-
 public class Test {
     @Name(name="czy")
     private String name;
 }
+
 /**
 * 注解处理器，比如打印得到的注解值，也可以做其他操作。
 */
-
 public class NameUtil {
     public static void getName(Class<?> clazz) {
         Field[] fields = clazz.getDeclaredFields();

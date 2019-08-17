@@ -14,9 +14,9 @@ tags:
 
 ## 处理器实现
 
-首先明确一个事实：处理器保证内存操作的原子性，即从内存中读一个字节或写一个字节一定是原子的，当然复杂的内存操作处理器是不自动保证原子性了。处理器保证原子操作有两种方式，一种是对总线加锁，执行该原子操作时，锁总线，这样其他CPU就不能对内存进行访问。
+首先明确一个事实：处理器保证内存操作的原子性，即从内存中读一个字节或写一个字节一定是原子的，当然复杂的内存操作处理器是不自动保证原子性了。**处理器保证原子操作有两种方式，一种是对总线加锁，执行该原子操作时，锁总线，这样其他CPU就不能对内存进行访问**。
 
-第二种方式是通过缓存锁保证，总线锁的开销比较大，在某些场合下使用缓存锁来进行优化。意思是如果某一CPU执行原子操作将结果回写到内存时，由缓存一致性机制使得其他CPU内的缓存行无效。
+**第二种方式是通过缓存锁保证，总线锁的开销比较大，在某些场合下使用缓存锁来进行优化。意思是如果某一CPU执行原子操作将结果回写到内存时，由缓存一致性机制使得其他CPU内的缓存行无效。**
 
 有两种情况下处理器不会使用缓存锁定：
 + 当操作的数据不能被缓存在处理器内部，或操作的数据跨多个缓存行（cache line）时，则处理器会调用总线锁定。
@@ -55,7 +55,7 @@ CAS操作使用的是CPU的的CMPXCHG指令，能够保证操作的原子性。A
 + start()规则：如果线程A执行操作ThreadB.start()（启动线程B），那么A线程的ThreadB.start()操作happens-before于线程B中的任意操作。
 + join()规则：如果线程A执行操作ThreadB.join()并成功返回，那么线程B中的任意操作happens-before于线程A从ThreadB.join()操作成功返回。
 
-在JMM中，如果一个操作执行的结果需要对另一个操作可见，那么这两个操作之间必须要存在happens-before关系。这里提到的两个操作既可以是在一个线程之内，也可以是在不同线程之间。
+**在JMM中，如果一个操作执行的结果需要对另一个操作可见，那么这两个操作之间必须要存在happens-before关系。**这里提到的两个操作既可以是在一个线程之内，也可以是在不同线程之间。
 
 # as-if-serial原则
 
@@ -73,9 +73,10 @@ public class DoubleCheckedLocking {
 		if (instance == null) {
 			//加锁
 			synchronized (DoubleCheckedLocking.class) {
-				//第二次加锁
-				if (instance == null)
-					instance = new Instance(); 
+				//第二次检查
+				if (instance == null) {
+					instance = new Instance();
+				}
 			} 
 		} 
 		return instance;
@@ -83,7 +84,7 @@ public class DoubleCheckedLocking {
 }
 ```
 
-如果第一次检查instance不为null，那么就不需要执行下面的加锁和初始化操作。因此，可以大幅降低synchronized带来的性能开销。但是有一个错误的地方，在第四行读取到instance不为null时，可能instance还没完成初始化。在new一个实例对象时，可以分解为3个步骤：
+如果第一次检查instance不为null，那么就不需要执行下面的加锁和初始化操作。因此，可以大幅降低synchronized带来的性能开销，第二次检查可以避免重复创建单例。但是有一个错误的地方，在第四行读取到instance不为null时，可能instance还没完成初始化。在new一个实例对象时，可以分解为3个步骤：
 
 ```
 memory = allocate();　　// 1：分配对象的内存空间
@@ -97,7 +98,7 @@ instance = memory;　　 // 3：设置instance指向刚分配的内存地址
 
 ```java
 public class InstanceFactory {
-	private static class InstanceHolder {
+	static class InstanceHolder {
 		public static Instance instance = new Instance();
 	}
 	public static Instance getInstance() {

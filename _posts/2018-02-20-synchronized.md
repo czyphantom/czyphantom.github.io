@@ -20,7 +20,7 @@ synchronized可以用来修饰方法，静态方法和代码块。当修饰方�
 
 # 实现原理
 
-由synchronized修饰的方法和synchronized修饰的代码块的实现原理也不尽相同，前者的实现由读取方法的ACC_SYNCHRONIZED标志来隐式实现，后者是由进入管程对象实现的（monitorenter和monitorexit指令）。monitorenter指令是在编译后插入到同步代码块的开始位置，而monitorexit是插入到方法结束处和异常处， JVM要保证每个monitorenter必须有对应的monitorexit与之配对。任何对象都有一个monitor与之关联，当且一个monitor被持有后，它将处于锁定状态。线程执行到monitorenter指令时，将会尝试获取对象所对应的 monitor的所有权，即尝试获得对象的锁。
+由synchronized修饰的方法和synchronized修饰的代码块的实现原理也不尽相同，前者的实现由读取方法的ACC_SYNCHRONIZED标志来隐式实现，后者是由进入管程对象实现的（monitorenter和monitorexit指令）。monitorenter指令是在编译后插入到同步代码块的开始位置，而monitorexit是插入到方法结束处和异常处，JVM要保证每个monitorenter必须有对应的monitorexit与之配对。任何对象都有一个monitor与之关联，当且一个monitor被持有后，它将处于锁定状态。线程执行到monitorenter指令时，将会尝试获取对象所对应的monitor的所有权，即尝试获得对象的锁。
 
 ## synchronized方法的实现原理
 
@@ -87,7 +87,7 @@ javap得到关键字节码如下：
       24: return
 ```
 
-可以看到同步代码块的进入与退出使用的是monitorenter和monitorexit指令，前者指向同步代码块的开始位置，后者指向结束位置。执行到monitorenter命令时，当前线程会试图获得对象锁，如果锁的计数值为0时，当前线程可以获得锁，并进入同步代码块，并将锁的计数值设为1。注意synchonized的锁是可以重入的，也就是说在获得当前对象锁之后，如果调用了一个synchonized修饰的方法再次请求获得锁也是被允许的，此时计数器的值再加1，每退出一个同步方法或者代码块，计数器值减1，最后退出同步区的时候，计数器值设置为0。为了保证在方法异常完成时monitorenter和monitorexit指令依然可以正确配对执行，编译器会自动产生一个异常处理器，这个异常处理器声明可处理所有的异常，它的目的就是用来执行monitorexit指令。因此最后会多出一个monitorexit指令。
+可以看到同步代码块的进入与退出使用的是monitorenter和monitorexit指令，前者指向同步代码块的开始位置，后者指向结束位置。执行到monitorenter命令时，当前线程会试图获得对象锁，如果锁的计数值为0时，当前线程可以获得锁，并进入同步代码块，并将锁的计数值设为1。**注意synchonized的锁是可以重入的，也就是说在获得当前对象锁之后，如果调用了一个synchonized修饰的方法再次请求获得锁也是被允许的，**此时计数器的值再加1，每退出一个同步方法或者代码块，计数器值减1，最后退出同步区的时候，计数器值设置为0。为了保证在方法异常完成时monitorenter和monitorexit指令依然可以正确配对执行，编译器会自动产生一个异常处理器，这个异常处理器声明可处理所有的异常，它的目的就是用来执行monitorexit指令，**因此最后会多出一个monitorexit指令。**
 
 ## Java 6之后对synchonized的优化
 
@@ -121,5 +121,7 @@ javap得到关键字节码如下：
 # 参考文章
 
 [深入理解Java并发之synchronized实现原理](http://blog.csdn.net/javazejian/article/details/72828483#synchronized%E7%9A%84%E4%B8%89%E7%A7%8D%E5%BA%94%E7%94%A8%E6%96%B9%E5%BC%8F)
+
 [聊聊并发（二）Java SE1.6中的Synchronized](http://ifeve.com/java-synchronized/)
+
 [java中的锁--偏向锁、轻量级锁、自旋锁、重量级锁](http://blog.csdn.net/zqz_zqz/article/details/70233767)
