@@ -10,7 +10,7 @@ tags:
     - Java
 ---
 
-在Java8之前的版本Future接口的实现类只有FutureTask类，但是只提供轮询或者阻塞获取结果的方式，不能及时的获取结果。在Java8中引入了CompletaleFuture类，供了非常强大的Future的扩展功能，可以帮助我们简化异步编程的复杂性，并且提供了函数式编程的能力，可以通过回调的方式处理计算结果，也提供了转换和组合CompletableFuture 的方法。
+在Java8之前的版本Future接口的实现类只有FutureTask类，但是只提供轮询或者阻塞获取结果的方式，不能及时的获取结果。在Java8中引入了CompletaleFuture类，供了非常强大的Future的扩展功能，可以帮助我们简化异步编程的复杂性，并且提供了函数式编程的能力，可以通过回调的方式处理计算结果，也提供了转换和组合CompletableFuture的方法。
 
 可以通过CompletableFuture的supplyAsync方法创建一个异步计算，当然也可以通过传入一个Executor来执行异步程序，如果不传入默认使用ForkJoinPool.commonPool()。异步计算结束之后还可以指定回调函数，使用supplyAsync().thenAccept()来添加回调。
 
