@@ -141,7 +141,7 @@ ThreadPoolExecutor的执行示意图如下：
         	//再次检查线程池状态
             int recheck = ctl.get();
             //如果线程池不处于运行状态，将该线程从workQueue中移除
-            if (! isRunning(recheck) && remove(command))
+            if (!isRunning(recheck) && remove(command))
                 //使用拒绝处理器拒绝执行
                 reject(command);
             //如果此时线程池中没有工作线程，需要新建一个来执行任务
@@ -223,7 +223,7 @@ ThreadPoolExecutor的执行示意图如下：
             }
         } finally {
         	//如果没有开始，说明添加worker失败，从workers里移除，worker数量也恢复
-            if (! workerStarted)
+            if (!workerStarted)
                 addWorkerFailed(w);
         }
         return workerStarted;
@@ -239,90 +239,37 @@ ThreadPoolExecutor的执行示意图如下：
 ### Worker类
 
 ```java
-    private final class Worker
-        extends AbstractQueuedSynchronizer
-        implements Runnable
-    {
-        /**
-         * This class will never be serialized, but we provide a
-         * serialVersionUID to suppress a javac warning.
-         */
-        private static final long serialVersionUID = 6138294804551838833L;
+private final class Worker extends AbstractQueuedSynchronizer implements Runnable {
 
-        /** Thread this worker is running in.  Null if factory fails. */
-        final Thread thread;
-        /** Initial task to run.  Possibly null. */
-        Runnable firstTask;
-        /** Per-thread task counter */
-        volatile long completedTasks;
+    private static final long serialVersionUID = 6138294804551838833L;
 
-        /**
-         * Creates with given first task and thread from ThreadFactory.
-         * @param firstTask the first task (null if none)
-         */
-        Worker(Runnable firstTask) {
-            setState(-1); // inhibit interrupts until runWorker
-            this.firstTask = firstTask;
-            this.thread = getThreadFactory().newThread(this);
-        }
+    final Thread thread;
+        
+    Runnable firstTask;
 
-        /** Delegates main run loop to outer runWorker  */
-        public void run() {
-            runWorker(this);
-        }
+    volatile long completedTasks;
 
-        // Lock methods
-        //
-        // The value 0 represents the unlocked state.
-        // The value 1 represents the locked state.
+    Worker(Runnable firstTask) {
+        setState(-1); 
+        this.firstTask = firstTask;
+        this.thread = getThreadFactory().newThread(this);
+    }
 
-        protected boolean isHeldExclusively() {
-            return getState() != 0;
-        }
-
-        protected boolean tryAcquire(int unused) {
-            if (compareAndSetState(0, 1)) {
-                setExclusiveOwnerThread(Thread.currentThread());
-                return true;
-            }
-            return false;
-        }
-
-        protected boolean tryRelease(int unused) {
-            setExclusiveOwnerThread(null);
-            setState(0);
-            return true;
-        }
-
-        public void lock()        { acquire(1); }
-        public boolean tryLock()  { return tryAcquire(1); }
-        public void unlock()      { release(1); }
-        public boolean isLocked() { return isHeldExclusively(); }
-
-        void interruptIfStarted() {
-            Thread t;
-            if (getState() >= 0 && (t = thread) != null && !t.isInterrupted()) {
-                try {
-                    t.interrupt();
-                } catch (SecurityException ignore) {
-                }
-            }
-        }
+    public void run() {
+        runWorker(this);
     }
 
     final void runWorker(Worker w) {
         Thread wt = Thread.currentThread();
         Runnable task = w.firstTask;
         w.firstTask = null;
-        w.unlock(); // allow interrupts
+        w.unlock(); 
         boolean completedAbruptly = true;
         try {
+            //只要有任务或者通过getTask方法获取有任务，就一直循环
             while (task != null || (task = getTask()) != null) {
+                //有任务运行时都需要对worker进行加锁
                 w.lock();
-                // If pool is stopping, ensure thread is interrupted;
-                // if not, ensure thread is not interrupted.  This
-                // requires a recheck in second case to deal with
-                // shutdownNow race while clearing interrupt
                 if ((runStateAtLeast(ctl.get(), STOP) ||
                      (Thread.interrupted() &&
                       runStateAtLeast(ctl.get(), STOP))) &&
@@ -355,13 +302,11 @@ ThreadPoolExecutor的执行示意图如下：
     }
 
     private Runnable getTask() {
-        boolean timedOut = false; // Did the last poll() time out?
+        boolean timedOut = false;
 
         for (;;) {
             int c = ctl.get();
             int rs = runStateOf(c);
-
-            // Check if queue empty only if necessary.
             if (rs >= SHUTDOWN && (rs >= STOP || workQueue.isEmpty())) {
                 decrementWorkerCount();
                 return null;
@@ -369,7 +314,8 @@ ThreadPoolExecutor的执行示意图如下：
 
             int wc = workerCountOf(c);
 
-            // Are workers subject to culling?
+            //是否允许核心池超时或者当前线程数量超过核心池
+            //allowCoreThreadTimeOut默认为false，如果为true，核心池线程也使用keepAliveTime作为超时时间
             boolean timed = allowCoreThreadTimeOut || wc > corePoolSize;
 
             if ((wc > maximumPoolSize || (timed && timedOut))
@@ -380,6 +326,7 @@ ThreadPoolExecutor的执行示意图如下：
             }
 
             try {
+                //根据是否允许超时来决定是调用poll方法或者take方法
                 Runnable r = timed ?
                     workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS) :
                     workQueue.take();

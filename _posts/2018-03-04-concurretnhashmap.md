@@ -47,7 +47,7 @@ JDK1.8之前的ConcurrentHashMap采用分段锁的机制，实现并发的更新
             super(MOVED, null, null, null);
             this.nextTable = tab;
         }
-      }
+    }
 
 ```
 
