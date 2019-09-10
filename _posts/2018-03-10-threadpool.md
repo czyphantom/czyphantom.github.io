@@ -47,7 +47,7 @@ ThreadPoolExecutor的执行示意图如下：
     //拒绝策略处理器，一般有以下几种拒绝策略
     //AbortPolicy：直接抛出异常，默认
     //CallerRunsPolicy：由调用者所在线程来运行
-    //DiscardOldestPolicy：丢弃队列里最近的一个任务，并执行当前任务
+    //DiscardOldestPolicy：线程池会放弃等待队列中最旧的未处理任务，然后将被拒绝的任务添加到等待队列中。
     //DiscardPolicy：不处理，丢弃掉
     private volatile RejectedExecutionHandler handler;
 ```
