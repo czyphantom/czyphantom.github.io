@@ -38,7 +38,7 @@ public @interface SpringBootApplication {
 }
 ```
 
-除了几个Java自带的注解外，@SpringBootApplication注解有三个其他的注解：@SpringBootConfiguration（点进去发现其实也是@Configuration），@EnableAutoConfiguration以及@ComponentScan。@Configuration注解的类都是一个JavaConfig的配置类，可以在@Configuration注解的类里使用@Bean将bean注册到IoC容器中，启动类被标注了@Configuration意味着启动类也是一个JavaConfig类。@ComponentScan自动扫描并加载符合条件的组件或者bean定义，最终将这些bean定义加载到IoC容器中，**由于默认扫描的是有该注解的类所在的package，所以一般将启动类放在根目录下**。**@EnableAutoConfiguration负责自动配置，这时Spring Boot的核心之一**，我们看它有哪些定义：
+除了几个Java自带的注解外，@SpringBootApplication注解有三个其他的注解：@SpringBootConfiguration（点进去发现其实也是@Configuration），@EnableAutoConfiguration以及@ComponentScan。@Configuration注解的类都是一个JavaConfig的配置类，可以在@Configuration注解的类里使用@Bean将bean注册到IoC容器中，启动类被标注了@Configuration意味着启动类也是一个JavaConfig类。@ComponentScan自动扫描并加载符合条件的组件或者bean定义，最终将这些bean定义加载到IoC容器中，**由于默认扫描的是有该注解的类所在的package，所以一般将启动类放在根目录下**。**@EnableAutoConfiguration负责自动配置，这是Spring Boot自动配置的核心，也是扩展Spring Boot的关键。**@Enable系列注解在Spring 3中就已经引入，用来替代XML配置文件（@EnableTransactionManagement、@EnableScheduling等等）。我们看看@EnableAutoConfiguration有哪些定义：
 
 ```java
 @Target(ElementType.TYPE)
